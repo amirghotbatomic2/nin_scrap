@@ -113,9 +113,13 @@ function downloadFile(url, destPath) {
         const dir = path.dirname(destPath);
         const outName = path.basename(destPath);
         const res = spawnSync('aria2c', [
-            '-x', '8',
-            '-s', '8',
-            '-j', '4',
+            '-x', '16',
+            '-s', '16',
+            '-j', '1',
+            '-k', '1M',
+            '--min-split-size=1M',
+            '--max-connection-per-server=16',
+            '--disk-cache=64M',
             '--check-certificate=false',
             `--user-agent=${userAgent}`,
             `--referer=${referer}`,
