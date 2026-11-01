@@ -687,6 +687,7 @@ async function downloadRomFile(url, destPath) {
     if (hasAria2) {
         console.log(`    ⚡ Downloading via Aria2 Accelerator: ${url}`);
         const destDir = path.dirname(destPath);
+        const destFile = path.basename(destPath);
         const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
         const ariaCmd = `aria2c -x 16 -s 16 -j 1 -k 1M --min-split-size=1M --max-connection-per-server=16 --disk-cache=64M --check-certificate=false --user-agent="${userAgent}" --header="Accept: */*" --retry-wait=3 --file-allocation=none --dir="${destDir}" --out="${destFile}" "${url}"`;
         execSync(ariaCmd, { stdio: 'inherit' });
