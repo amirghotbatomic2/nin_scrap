@@ -1,37 +1,53 @@
-name: 🎮 NSWPedia to AbreHamrahi Game Sync Worker
+name: 🎮 Switch Games to AbreHamrahi Sync Worker
 
 on:
   schedule:
-    # Run every 2 hours (e.g. 00:00, 02:00, 04:00, ...)
     - cron: '0 */2 * * *'
   workflow_dispatch:
     inputs:
+      batch_games:
+        description: 'Multi-Game Batch (TARGET_SITE: your-site-url \n PAGE: rom-page-url \n BASE: direct-url \n separated by ---)'
+        required: false
+        type: string
+      target_site_url:
+        description: 'Site Game Page URL to Update (e.g. https://your-site.com/downloads/mario-odyssey - Replaces existing links with new ones)'
+        required: false
+        type: string
       single_url:
-        description: '🔗 لینک صفحه بازی در NSWPedia (اختیاری برای دانلود تکی)'
+        description: 'Source Game Page URL (NSWPedia / Switch-Romz - Leave empty if using batch_games)'
         required: false
         type: string
-      force_reupload:
-        description: '⚡ دانلود و آپلود مجدد اجباری و نادیده گرفتن فایل‌های موجود در ابر (true / false)'
+      direct_base_url:
+        description: 'Base Game Direct Download Link (For single game)'
         required: false
-        default: 'false'
         type: string
-      limit:
-        description: '📦 حداکثر تعداد بازی‌های صف در این اجرا (پیش‌فرض ۱۰)'
+      direct_update_url:
+        description: 'Update Direct Download Link (For single game)'
         required: false
-        default: '10'
         type: string
-
-concurrency:
-  group: sync-games-pipeline
-  cancel-in-progress: false
+      direct_dlc_url:
+        description: 'DLC Direct Download Link (For single game)'
+        required: false
+        type: string
 
 jobs:
   sync-games:
-    name: 🚀 Download NSW ROMs & Upload to AbreHamrahi Cloud
+    name: 🚀 Download Switch ROM & Upload to AbreHamrahi
     runs-on: ubuntu-latest
-    timeout-minutes: 120 # Safety ceiling to allow last active game up to 1h extra to finish
+    timeout-minutes: 180
 
     steps:
+      - name: 🧹 Free Disk Space (Maximize Runner Space ~70GB+)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
@@ -40,55 +56,55 @@ jobs:
         with:
           node-version: '20'
 
-      - name: 🧹 Maximize Free Disk Space
-        run: |
-          echo "=== Disk space before cleanup ==="
-          df -h
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-          sudo rm -rf /opt/hostedtoolcache/Java*
-          sudo rm -rf /opt/hostedtoolcache/go*
-          sudo rm -rf /opt/hostedtoolcache/Ruby*
-          sudo docker image prune --all --force || true
-          echo "=== Disk space after cleanup ==="
-          df -h
-
-      - name: 📦 Install High-Speed Download Tools & RAR Archiver
+      - name: 📦 Install High-Speed Download & Packaging Tools (Aria2, RAR, Zip, 7z)
         run: |
           sudo apt-get update
-          sudo apt-get install -y aria2 curl rar unrar p7zip-full
+          sudo apt-get install -y aria2 rar unrar p7zip-full zip unzip
 
-      - name: ⚡ Execute Games Sync & Cloud Upload Pipeline
-        working-directory: scripts/youtube-downloader
+      - name: ⚡ Execute NSWPedia Sync Pipeline
+        id: sync_step
         env:
-          SITE_URL: ${{ secrets.SITE_URL || 'https://ninten2.ir' }}
-          SYNC_API_TOKEN: ${{ secrets.SYNC_API_TOKEN || 'ninten2-sync-secret-key-2026' }}
+          SITE_URL: ${{ vars.SITE_URL || secrets.SITE_URL }}
+          SYNC_API_TOKEN: ${{ secrets.SYNC_API_TOKEN || vars.SYNC_API_TOKEN }}
           ABREHAMRAHI_REFRESH_TOKEN: ${{ secrets.ABREHAMRAHI_REFRESH_TOKEN }}
-          MAX_RUN_MINUTES: '60' # Soft time limit: stops accepting new games after 60 min, letting current game finish
+          ZIP_PASSWORD: ${{ vars.ZIP_PASSWORD || secrets.ZIP_PASSWORD }}
+          RAW_BATCH_INPUT: ${{ github.event.inputs.batch_games }}
         run: |
-          CMD="node sync_games.cjs --max-time-minutes 60"
-          
+          CMD="node sync_games.cjs"
+
+          if [ -n "$RAW_BATCH_INPUT" ]; then
+            printf "%s\n" "$RAW_BATCH_INPUT" > batch_games.txt
+            echo "📋 Batch definition file created with contents:"
+            cat batch_games.txt
+            CMD="$CMD --batch-file batch_games.txt"
+          fi
+
+          if [ -n "${{ github.event.inputs.target_site_url }}" ]; then
+            CMD="$CMD --target-site-url \"${{ github.event.inputs.target_site_url }}\""
+          fi
+
           if [ -n "${{ github.event.inputs.single_url }}" ]; then
             CMD="$CMD --single-url \"${{ github.event.inputs.single_url }}\""
           fi
 
-          if [ "${{ github.event.inputs.force_reupload }}" = "true" ]; then
-            CMD="$CMD --force-reupload"
+          if [ -n "${{ github.event.inputs.direct_base_url }}" ]; then
+            CMD="$CMD --direct-base-url \"${{ github.event.inputs.direct_base_url }}\""
           fi
 
-          if [ -n "${{ github.event.inputs.limit }}" ]; then
-            CMD="$CMD --limit ${{ github.event.inputs.limit }}"
+          if [ -n "${{ github.event.inputs.direct_update_url }}" ]; then
+            CMD="$CMD --direct-update-url \"${{ github.event.inputs.direct_update_url }}\""
           fi
 
-          echo "Executing: $CMD"
+          if [ -n "${{ github.event.inputs.direct_dlc_url }}" ]; then
+            CMD="$CMD --direct-dlc-url \"${{ github.event.inputs.direct_dlc_url }}\""
+          fi
+
+          echo "🚀 Executing pipeline..."
           eval $CMD
 
       - name: 📋 Display Summary
         if: always()
         run: |
-          echo "### 🎮 وضعیت اجرای ورکر بازی‌های نینتندو سوییچ" >> $GITHUB_STEP_SUMMARY
-          echo "- **تاریخ اجرا:** $(date -u)" >> $GITHUB_STEP_SUMMARY
-          echo "- **محدودیت زمانی نرم‌افزاری:** ۶۰ دقیقه (بازی‌های در حال دانلود اجازه اتمام پیدا کردند)" >> $GITHUB_STEP_SUMMARY
-          echo "- **تکرار خودکار بعدی:** طبق کرون جاب هر ۲ ساعت یک‌بار" >> $GITHUB_STEP_SUMMARY
+          echo "### 🎮 انتقال بازی نینتندو سوییچ به ابر همراهی انجام شد!" >> $GITHUB_STEP_SUMMARY
+          echo "- **زمان اجرا:** $(date -u)" >> $GITHUB_STEP_SUMMARY
+          echo "- **وضعیت:** با موفقیت پردازش شد و لینک‌ها به سایت ارسال گردید." >> $GITHUB_STEP_SUMMARY

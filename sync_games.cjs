@@ -641,13 +641,12 @@ function processAndValidateRomFile(filePath, destDir) {
         }
 
         if (!extractedRomPath) {
-            try { fs.rmSync(extractSubDir, { recursive: true, force: true }); } catch { }
             throw new Error(`Could not find a valid Nintendo Switch ROM after extracting archive.`);
         }
 
         console.log(`    ✅ Extracted inner ROM: "${path.basename(extractedRomPath)}" (${formatBytes(fs.statSync(extractedRomPath).size)}) [${extractedMagic.type}]`);
 
-        // Remove original source archive file immediately to free disk space
+        // Remove original source archive file
         try { fs.unlinkSync(filePath); } catch { }
 
         return extractedRomPath;
@@ -1310,13 +1309,6 @@ async function run() {
                     } catch (fileErr) {
                         lastFileError = fileErr;
                         console.error(`\n    ⚠️ Attempt ${fileAttempt} failed for file ${fileItem.name}: ${fileErr.message}`);
-                        // Clean up any remaining temp files in DEST_DIR on failure so retry has max free space
-                        try {
-                            const remainingFiles = fs.readdirSync(DEST_DIR);
-                            for (const rf of remainingFiles) {
-                                try { fs.rmSync(path.join(DEST_DIR, rf), { recursive: true, force: true }); } catch { }
-                            }
-                        } catch { }
                     }
                 }
 
